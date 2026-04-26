@@ -250,9 +250,11 @@ async def checkping_cmd(interaction: discord.Interaction) -> None:
         else:
             members_without_whitelisted_role.append(m)
 
+    apply_online_filter = bot.dm_only_online and _presence_data_usable(members)
+
     targets: list[discord.Member] = []
     for m in members_with_whitelisted_role:
-        if bot.dm_only_online and not _is_online(m):
+        if apply_online_filter and not _is_online(m):
             continue
         targets.append(m)
 
@@ -268,6 +270,8 @@ async def checkping_cmd(interaction: discord.Interaction) -> None:
         f"**Server:** {guild.name}\n"
         f"**Total members:** {total_members}\n"
         f"**Non-bot members:** {len(non_bot_members)}\n"
+        f"**DM_ONLY_ONLINE:** {bot.dm_only_online}\n"
+        f"**Online filter active:** {apply_online_filter}\n"
         f"**Ping role whitelist:** {', '.join(f'<@&{rid}>' for rid in bot.storage.ping_role_whitelist)}\n"
         f"**Members WITH whitelisted role(s):** {len(members_with_whitelisted_role)}\n"
         f"**Members who would receive DM:** {len(targets)}\n\n"
@@ -291,6 +295,16 @@ def _is_online(member: discord.Member) -> bool:
         return member.status is not discord.Status.offline
     except Exception:
         return True
+
+
+def _presence_data_usable(members: list[discord.Member]) -> bool:
+    """
+    If Presence Intent is disabled in the Discord portal, member.status often
+    appears offline for everyone. In that case, skip online-only filtering.
+    """
+    if not members:
+        return False
+    return any(_is_online(m) for m in members if not m.bot)
 
 
 @bot.tree.command(
@@ -329,13 +343,18 @@ async def rallydm_cmd(interaction: discord.Interaction, message: str) -> None:
         )
         return
 
-    targets: list[discord.Member] = []
+    eligible: list[discord.Member] = []
     for m in members:
         if m.bot:
             continue
         if not _member_has_any_whitelisted_role(m):
             continue
-        if bot.dm_only_online and not _is_online(m):
+        eligible.append(m)
+
+    apply_online_filter = bot.dm_only_online and _presence_data_usable(members)
+    targets: list[discord.Member] = []
+    for m in eligible:
+        if apply_online_filter and not _is_online(m):
             continue
         targets.append(m)
 
@@ -363,8 +382,15 @@ async def rallydm_cmd(interaction: discord.Interaction, message: str) -> None:
         chunk = targets[chunk_start : chunk_start + 30]
         await asyncio.gather(*(worker(m) for m in chunk))
 
+    note = ""
+    if bot.dm_only_online and not apply_online_filter:
+        note = (
+            "\nNote: `DM_ONLY_ONLINE=true`, but presence data was unavailable "
+            "(everyone appeared offline), so online-only filtering was skipped."
+        )
+
     await interaction.followup.send(
-        f"Done. Targeted `{len(targets)}` member(s). Sent `{sent}`. Failed `{failed}` (forbidden `{forbidden}`).",
+        f"Done. Targeted `{len(targets)}` member(s). Sent `{sent}`. Failed `{failed}` (forbidden `{forbidden}`).{note}",
         ephemeral=True,
     )
 
