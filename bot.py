@@ -138,6 +138,33 @@ async def whitelist_cmd(interaction: discord.Interaction, user: discord.User) ->
     )
 
 
+@bot.tree.command(name="removewhitelist", description="Remove a user from the command whitelist.")
+@app_commands.describe(user="User to remove from whitelist")
+async def removewhitelist_cmd(interaction: discord.Interaction, user: discord.User) -> None:
+    if not await _ensure_authorized(interaction):
+        return
+
+    user_id = int(user.id)
+    if user_id == OWNER_ID:
+        await interaction.response.send_message(
+            "Cannot remove the owner from the whitelist.", ephemeral=True
+        )
+        return
+
+    if user_id not in bot.storage.user_whitelist:
+        await interaction.response.send_message(
+            f"User `{user_id}` is not in the whitelist.", ephemeral=True
+        )
+        return
+
+    bot.storage.user_whitelist.remove(user_id)
+    bot.storage.save(STORAGE_PATH)
+
+    await interaction.response.send_message(
+        f"Removed from whitelist: `{user_id}`", ephemeral=True
+    )
+
+
 @bot.tree.command(
     name="addping",
     description="Add a server role to the ping-role whitelist (used by /rallydm).",
@@ -152,6 +179,85 @@ async def addping_cmd(interaction: discord.Interaction, role: discord.Role) -> N
 
     await interaction.response.send_message(
         f"Added ping role whitelist: `{role.id}`", ephemeral=True
+    )
+
+
+@bot.tree.command(
+    name="removeping",
+    description="Remove a role from the ping-role whitelist.",
+)
+@app_commands.describe(role="Role to remove")
+async def removeping_cmd(interaction: discord.Interaction, role: discord.Role) -> None:
+    if not await _ensure_authorized(interaction):
+        return
+
+    role_id = int(role.id)
+    if role_id not in bot.storage.ping_role_whitelist:
+        await interaction.response.send_message(
+            f"Role `{role_id}` is not in the whitelist.", ephemeral=True
+        )
+        return
+
+    bot.storage.ping_role_whitelist.remove(role_id)
+    bot.storage.save(STORAGE_PATH)
+
+    await interaction.response.send_message(
+        f"Removed from ping whitelist: `{role_id}`", ephemeral=True
+    )
+
+
+@bot.tree.command(
+    name="checkping",
+    description="Preview who would receive a /rallydm message (debugging only).",
+)
+async def checkping_cmd(interaction: discord.Interaction) -> None:
+    if not await _ensure_authorized(interaction):
+        return
+
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "This command must be used in a server.", ephemeral=True
+        )
+        return
+
+    if not bot.storage.ping_role_whitelist:
+        await interaction.response.send_message(
+            "No ping roles are whitelisted yet. Use `/addping` first.", ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    guild = interaction.guild
+
+    try:
+        members = [m async for m in guild.fetch_members(limit=None)]
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "I don't have permission to list members.", ephemeral=True
+        )
+        return
+
+    targets: list[discord.Member] = []
+    for m in members:
+        if m.bot:
+            continue
+        if not _member_has_any_whitelisted_role(m):
+            continue
+        if bot.dm_only_online and not _is_online(m):
+            continue
+        targets.append(m)
+
+    # Show first 10 targets
+    member_list = "\n".join(f"  • {m.mention} ({m.id})" for m in targets[:10])
+    if len(targets) > 10:
+        member_list += f"\n  ... and {len(targets) - 10} more"
+
+    await interaction.followup.send(
+        f"**Ping role whitelist:** {', '.join(f'<@&{rid}>' for rid in bot.storage.ping_role_whitelist)}\n"
+        f"**Members who would receive DM:** {len(targets)}\n"
+        f"```\n{member_list if targets else 'No members match criteria'}\n```",
+        ephemeral=True,
     )
 
 
