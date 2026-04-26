@@ -238,12 +238,20 @@ async def checkping_cmd(interaction: discord.Interaction) -> None:
         )
         return
 
+    total_members = len(members)
+    non_bot_members = [m for m in members if not m.bot]
+    
+    members_with_whitelisted_role = []
+    members_without_whitelisted_role = []
+    
+    for m in non_bot_members:
+        if _member_has_any_whitelisted_role(m):
+            members_with_whitelisted_role.append(m)
+        else:
+            members_without_whitelisted_role.append(m)
+
     targets: list[discord.Member] = []
-    for m in members:
-        if m.bot:
-            continue
-        if not _member_has_any_whitelisted_role(m):
-            continue
+    for m in members_with_whitelisted_role:
         if bot.dm_only_online and not _is_online(m):
             continue
         targets.append(m)
@@ -253,10 +261,18 @@ async def checkping_cmd(interaction: discord.Interaction) -> None:
     if len(targets) > 10:
         member_list += f"\n  ... and {len(targets) - 10} more"
 
+    # Show first 5 members WITHOUT the role (for debugging)
+    non_target_list = "\n".join(f"  • {m.mention} (roles: {', '.join(r.name for r in m.roles[:3])})" for m in members_without_whitelisted_role[:5])
+
     await interaction.followup.send(
+        f"**Server:** {guild.name}\n"
+        f"**Total members:** {total_members}\n"
+        f"**Non-bot members:** {len(non_bot_members)}\n"
         f"**Ping role whitelist:** {', '.join(f'<@&{rid}>' for rid in bot.storage.ping_role_whitelist)}\n"
-        f"**Members who would receive DM:** {len(targets)}\n"
-        f"```\n{member_list if targets else 'No members match criteria'}\n```",
+        f"**Members WITH whitelisted role(s):** {len(members_with_whitelisted_role)}\n"
+        f"**Members who would receive DM:** {len(targets)}\n\n"
+        f"**Would receive DM:**\n```\n{member_list if targets else 'None'}\n```\n"
+        f"**Sample members WITHOUT whitelisted role:**\n```\n{non_target_list if members_without_whitelisted_role else 'All members have the role!'}\n```",
         ephemeral=True,
     )
 
