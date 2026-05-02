@@ -1,2 +1,2 @@
 # discord bot for dming people
-# running on aws vps
+running on aws vps
