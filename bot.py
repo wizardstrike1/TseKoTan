@@ -60,8 +60,8 @@ class Storage:
 class WhitelistBot(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
-        intents.members = True  # needed to enumerate guild members
-        intents.presences = True  # only used when DM_ONLY_ONLINE=true
+        intents.members = True 
+        intents.presences = True 
         super().__init__(command_prefix="!", intents=intents)
 
         self.storage = Storage.load(STORAGE_PATH)
@@ -114,7 +114,7 @@ async def _safe_dm(
         await asyncio.sleep(dm_delay_seconds)
         return False, "forbidden"
     except discord.HTTPException as e:
-        # 429s are typically handled internally, but if one leaks through, back off.
+
         retry_after = getattr(e, "retry_after", None)
         if retry_after is not None:
             await asyncio.sleep(float(retry_after) + dm_delay_seconds)
@@ -258,12 +258,10 @@ async def checkping_cmd(interaction: discord.Interaction) -> None:
             continue
         targets.append(m)
 
-    # Show first 10 targets
     member_list = "\n".join(f"  • {m.mention} ({m.id})" for m in targets[:10])
     if len(targets) > 10:
         member_list += f"\n  ... and {len(targets) - 10} more"
 
-    # Show first 5 members WITHOUT the role (for debugging)
     non_target_list = "\n".join(f"  • {m.mention} (roles: {', '.join(r.name for r in m.roles[:3])})" for m in members_without_whitelisted_role[:5])
 
     await interaction.followup.send(
@@ -289,8 +287,6 @@ def _member_has_any_whitelisted_role(member: discord.Member) -> bool:
 
 
 def _is_online(member: discord.Member) -> bool:
-    # If Presence Intent is off, member.status may be "offline"/unknown-ish.
-    # We treat "offline" explicitly as not online; everything else counts as online.
     try:
         return member.status is not discord.Status.offline
     except Exception:
@@ -332,8 +328,6 @@ async def rallydm_cmd(interaction: discord.Interaction, message: str) -> None:
 
     guild = interaction.guild
 
-    # Ensure member cache is populated enough to iterate.
-    # This can take a bit on large servers; we handle with defer above.
     try:
         members = [m async for m in guild.fetch_members(limit=None)]
     except discord.Forbidden:
@@ -362,7 +356,6 @@ async def rallydm_cmd(interaction: discord.Interaction, message: str) -> None:
     failed = 0
     forbidden = 0
 
-    # Gentle concurrency (avoid spiking)
     sem = asyncio.Semaphore(3)
 
     async def worker(member: discord.Member) -> None:
