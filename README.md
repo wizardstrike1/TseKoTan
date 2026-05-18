@@ -1,2 +1,2 @@
 # discord bot for dming people
-running on aws vps
+dont look at this it sucks i js need it public for now
